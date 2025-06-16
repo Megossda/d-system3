@@ -1,9 +1,10 @@
 # File: actions/attack_action.py
-"""Implementation of Attack actions that work with ActionExecutionSystem."""
+"""Consolidated Attack Actions - Single source of truth for all attack actions."""
 from systems.attack_system import AttackSystem
+from error_handling import DnDErrorHandler
 
 class AttackAction:
-    """Represents a basic attack action."""
+    """Base attack action class."""
     def __init__(self, weapon_data=None):
         self.name = "Attack"
         self.weapon_data = weapon_data or {
@@ -14,7 +15,7 @@ class AttackAction:
             'damage_type': 'bludgeoning'
         }
 
-    def execute(self, performer, target):
+    def execute(self, performer, target=None):
         """
         Execute an attack.
         NOTE: Action economy is handled by ActionExecutionSystem, not here.
@@ -23,7 +24,7 @@ class AttackAction:
             print(f"  > {performer.name} needs a target to attack!")
             return False
         
-        # Use the existing attack system
+        # Use the existing attack system with error handling
         if self.weapon_data['name'].lower() == 'unarmed strike':
             return AttackSystem.make_unarmed_attack(performer, target)
         else:
