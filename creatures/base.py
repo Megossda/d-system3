@@ -33,20 +33,51 @@ class Creature:
             'target': None
         }
         
-        # --- NEW ---
-        # Add an attribute for social attitude, defaulting to Indifferent.
+        # Social attitude for influence checks
         self.attitude = attitude
         
         self.proficiency_bonus = self._get_proficiency_bonus_from_level(level if level > 0 else cr)
 
     def start_turn(self):
-        """Resets temporary turn-based effects."""
-        self.movement_for_turn = self.speed
+        """Resets temporary turn-based effects and action economy."""
+        # Reset temporary combat states
         self.is_dodging = False
         self.is_disengaging = False
         self.readied_action = {'trigger': None, 'action': None, 'target': None}
+        
+        # Use the action economy system to manage turn start
+        from systems.action_economy import ActionEconomyManager
+        economy = ActionEconomyManager.start_turn(self)
+        
         print(f"\n--- {self.name}'s Turn Begins ---")
-        print(f"  > Movement for turn reset to {self.movement_for_turn} feet.")
+        return economy
+
+    def can_take_action(self, action_type="action"):
+        """Check if this creature can take a specific type of action."""
+        from systems.action_economy import ActionEconomyManager
+        return ActionEconomyManager.can_take_action(self, action_type)
+
+    def use_action(self, action_name, action_type="action"):
+        """Use an action, tracking it in the action economy system."""
+        from systems.action_economy import ActionEconomyManager
+        return ActionEconomyManager.use_action(self, action_name, action_type)
+
+    def move(self, distance, movement_type="move"):
+        """Move a certain distance, tracking it in the action economy system."""
+        from systems.action_economy import ActionEconomyManager
+        return ActionEconomyManager.use_movement(self, distance, movement_type)
+
+    def get_action_economy_status(self):
+        """Get the current action economy status."""
+        from systems.action_economy import ActionEconomyManager
+        economy = ActionEconomyManager.get_economy(self)
+        return economy.get_status()
+
+    def print_action_economy(self):
+        """Print the current action economy status."""
+        from systems.action_economy import ActionEconomyManager
+        economy = ActionEconomyManager.get_economy(self)
+        economy.print_status()
 
     def _get_proficiency_bonus_from_level(self, level):
         """Calculates proficiency bonus from level or CR."""
@@ -69,6 +100,10 @@ class Creature:
             self.current_hp = 0
             self.is_alive = False
             print(f"  > {self.name} has been defeated!")
+            
+            # Clean up action economy when creature dies
+            from systems.action_economy import ActionEconomyManager
+            ActionEconomyManager.cleanup_dead_creatures()
             
     def __str__(self):
         return f"{self.name} (AC: {self.ac}, HP: {self.current_hp}/{self.max_hp}, Attitude: {self.attitude})"
