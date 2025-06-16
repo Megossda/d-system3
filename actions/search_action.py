@@ -11,9 +11,8 @@ class SearchAction:
         """
         The performer makes a Wisdom check using a specific skill (Insight, Medicine,
         Perception, or Survival) to find something.
+        NOTE: Action economy is handled by ActionExecutionSystem, not here.
         """
-        print(f"\n--- {performer.name}'s Action: Search ({skill_to_use.title()}) ---")
-        
         # The Search action is a Wisdom check using one of its associated skills.
         # Our global d20_system will handle the roll and check for proficiency.
         was_successful = perform_d20_test(

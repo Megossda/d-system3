@@ -11,9 +11,8 @@ class StudyAction:
         """
         The performer makes an Intelligence check using a specific skill (Arcana, History, etc.)
         to recall or analyze information.
+        NOTE: Action economy is handled by ActionExecutionSystem, not here.
         """
-        print(f"\n--- {performer.name}'s Action: Study ({skill_to_use.title()}) ---")
-        
         # The Study action is an Intelligence check using one of its associated skills.
         was_successful = perform_d20_test(
             creature=performer,

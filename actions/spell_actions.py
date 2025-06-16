@@ -16,9 +16,10 @@ class CastSpellAction(Action):
         self.spell_level = spell_level
 
     def execute(self, performer, target=None, action_type="ACTION"):
-        """Execute spell casting."""
-        # --- FIX ---
-        # Adjusted import to match your filename 'spell_manager.py'
+        """
+        Execute spell casting.
+        NOTE: Action economy is handled by ActionExecutionSystem, not here.
+        """
         from systems.spell_system.spell_manager import SpellManager
 
         spell_targets = self.targets if self.targets is not None else target

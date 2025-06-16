@@ -9,8 +9,8 @@ class DisengageAction:
     def execute(self, performer):
         """
         The performer takes the Disengage action, preventing Opportunity Attacks.
+        NOTE: Action economy is handled by ActionExecutionSystem, not here.
         """
-        print(f"\n--- {performer.name}'s Action: Disengage ---")
         performer.is_disengaging = True
         print(f"  > {performer.name}'s movement will not provoke opportunity attacks this turn.")
         return True

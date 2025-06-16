@@ -8,9 +8,10 @@ class InfluenceAction:
         self.name = "Influence"
 
     def execute(self, performer, target, skill_to_use, dc_to_beat=15):
-        """The performer makes a check to influence a target using a specific skill."""
-        print(f"\n--- {performer.name}'s Action: Influence ({skill_to_use.title()}) on {target.name} ---")
-        
+        """
+        The performer makes a check to influence a target using a specific skill.
+        NOTE: Action economy is handled by ActionExecutionSystem, not here.
+        """
         ability = 'wis' if skill_to_use.lower() == 'animal_handling' else 'cha'
         
         was_successful = perform_d20_test(

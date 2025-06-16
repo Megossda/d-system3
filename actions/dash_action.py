@@ -8,16 +8,10 @@ class DashAction:
 
     def execute(self, performer):
         """
-        The performer gains extra movement equal to their current speed
-        (after any modifiers are applied).
+        The performer gains extra movement equal to their current speed.
+        NOTE: Action economy is handled by ActionExecutionSystem, not here.
         """
-        print(f"\n--- {performer.name}'s Action: Dash ---")
-        
-        # --- THIS IS THE FIX ---
-        # The extra movement gained is equal to the creature's current speed,
-        # which might be affected by other conditions or effects.
-        # For our current system, this is still the base speed, but the logic
-        # is now compliant with the glossary rule for future expansion.
+        # The extra movement gained is equal to the creature's current speed
         extra_movement = performer.speed
         
         performer.movement_for_turn += extra_movement

@@ -11,9 +11,8 @@ class HideAction:
         """
         The performer makes a Dexterity (Stealth) check against a given DC.
         This calls the global d20_system to resolve the check.
+        NOTE: Action economy is handled by ActionExecutionSystem, not here.
         """
-        print(f"\n--- {performer.name}'s Action: Hide ---")
-        
         # The Hide action is a Dexterity (Stealth) check.
         # We call our global system to handle the roll and proficiency.
         was_successful = perform_d20_test(
