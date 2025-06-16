@@ -1,9 +1,8 @@
 # File: systems/spell_system/spell_manager.py
 """Spell Manager - Central hub for all spell operations."""
 
-# --- FIX ---
-# Corrected the import path to get the functions from 'core.utils'
 from core.utils import roll_d20, get_ability_modifier
+from systems.d20_system import perform_d20_test
 
 
 class SpellManager:
@@ -52,12 +51,29 @@ class SpellManager:
 
     @staticmethod
     def make_spell_save(target, caster, spell, save_type):
-        """Make a saving throw against a spell."""
-        # In a real test, you'd use a mock here. For now, we assume failure.
+        """Make a saving throw against a spell using the global d20 system."""
+        if not target or not target.is_alive:
+            return False
+            
         save_dc = caster.get_spell_save_dc()
-        # In a real system, you'd roll a d20 for the target and compare to save_dc
-        print(f"  > {target.name} needs to beat a DC of {save_dc} for a {save_type.upper()} save.")
-        return False
+        print(f"  > {target.name} must make a {save_type.upper()} saving throw against DC {save_dc}")
+        
+        # Use the global d20_system to handle the saving throw
+        # This ensures all the same advantage/disadvantage rules apply
+        success = perform_d20_test(
+            creature=target,
+            ability_name=save_type.lower(),  # 'dex', 'con', 'wis', etc.
+            check_type=None,  # Saving throws don't use skill proficiencies
+            dc=save_dc,
+            is_saving_throw=True  # This flag ensures saving throw proficiencies are used
+        )
+        
+        if success:
+            print(f"  > {target.name} succeeds on the {save_type.upper()} save!")
+        else:
+            print(f"  > {target.name} fails the {save_type.upper()} save!")
+            
+        return success
 
     @staticmethod
     def deal_spell_damage(target, damage, damage_type, caster, is_crit=False):

@@ -3,6 +3,9 @@
 from core.utils import roll_d20
 from systems.condition_system import has_condition
 
+# Global variable to track the last roll result for critical detection
+_last_d20_result = None
+
 def perform_d20_test(
     creature,
     ability_name,
@@ -15,11 +18,14 @@ def perform_d20_test(
     is_saving_throw=False,
     attacker_is_within_5_feet=False,
     is_attack_roll=False,
-    is_influence_check=False # --- NEW --- Flag to identify an influence check
+    is_influence_check=False
 ):
     """
-    Performs a generic D20 Test with full social attitude mechanics.
+    Performs a generic D20 Test with full social attitude mechanics and proper saving throw support.
+    Now tracks critical hits for the attack system.
     """
+    global _last_d20_result
+    
     # --- NEW: SOCIAL INTERACTION RULE ---
     # Check the target's attitude if this is an influence check.
     if is_influence_check and target:
@@ -30,7 +36,7 @@ def perform_d20_test(
             print(f"  > Target ({target.name}) is Hostile, imposing Disadvantage.")
             has_disadvantage = True
             
-    # ... (Advantage/Disadvantage logic is unchanged) ...
+    # Advantage/Disadvantage from conditions and combat states
     if target and has_condition(target, 'prone'):
         if attacker_is_within_5_feet:
             print(f"  > Target ({target.name}) is Prone and attacker is within 5ft, imposing Advantage.")
@@ -66,20 +72,22 @@ def perform_d20_test(
     if target_number is None:
         raise ValueError("A D20 Test requires either a DC or an AC.")
 
-    # Roll the d20
-    # ... (rolling logic is unchanged) ...
+    # Roll the d20 with advantage/disadvantage
     if has_advantage and not has_disadvantage:
         roll1, roll2 = roll_d20(), roll_d20()
         d20_result = max(roll1, roll2)
+        _last_d20_result = d20_result  # Track for critical detection
         print(f"  > Rolling with Advantage: got {roll1}, {roll2}. Using {d20_result}")
     elif has_disadvantage and not has_advantage:
         roll1, roll2 = roll_d20(), roll_d20()
         d20_result = min(roll1, roll2)
+        _last_d20_result = d20_result  # Track for critical detection
         print(f"  > Rolling with Disadvantage: got {roll1}, {roll2}. Using {d20_result}")
     else:
         if has_advantage and has_disadvantage:
             print("  > Advantage & Disadvantage cancel. Rolling normally.")
         d20_result = roll_d20()
+        _last_d20_result = d20_result  # Track for critical detection
         print(f"  > Rolling 1d20: got {d20_result}")
 
     # Handle special attack roll outcomes
@@ -91,13 +99,34 @@ def perform_d20_test(
             print("  > Natural 1! Automatic Miss!")
             return False
 
-    # Calculate final total
-    is_proficient = check_type and check_type.lower() in creature.proficiencies
-    proficiency_bonus = creature.proficiency_bonus if is_proficient else 0
+    # Calculate final total with proper proficiency handling
     ability_modifier = creature.get_ability_modifier(ability_name)
+    
+    # --- ENHANCED: Proper proficiency bonus calculation ---
+    proficiency_bonus = 0
+    prof_text = ""
+    
+    if is_saving_throw:
+        # For saving throws, check for saving throw proficiencies
+        save_prof_name = f"{ability_name}_save"  # e.g., "dex_save", "con_save"
+        if save_prof_name in creature.proficiencies:
+            proficiency_bonus = creature.proficiency_bonus
+            prof_text = f"+ {proficiency_bonus} (save prof)"
+        else:
+            prof_text = "+ 0 (no save prof)"
+    elif check_type:
+        # For skill checks, check for skill proficiencies
+        if check_type.lower() in creature.proficiencies:
+            proficiency_bonus = creature.proficiency_bonus
+            prof_text = f"+ {proficiency_bonus} (skill prof)"
+        else:
+            prof_text = "+ 0 (no skill prof)"
+    else:
+        # For ability checks without specific skills
+        prof_text = "+ 0 (ability check)"
+    
     total = d20_result + ability_modifier + proficiency_bonus
     
-    prof_text = f"+ {proficiency_bonus} (prof)" if is_proficient else "+ 0 (no prof)"
     print(f"  > Total: {d20_result} (roll) + {ability_modifier} ({ability_name}) {prof_text} = {total}")
 
     # Compare to the target number
@@ -107,3 +136,18 @@ def perform_d20_test(
     else:
         print(f"  > Failure. ({total} vs DC/AC {target_number})")
         return False
+
+def was_last_roll_critical():
+    """Check if the last d20 roll was a natural 20."""
+    global _last_d20_result
+    return _last_d20_result == 20
+
+def was_last_roll_fumble():
+    """Check if the last d20 roll was a natural 1."""
+    global _last_d20_result
+    return _last_d20_result == 1
+
+def get_last_d20_result():
+    """Get the actual d20 result from the last roll."""
+    global _last_d20_result
+    return _last_d20_result
