@@ -10,6 +10,7 @@ class InfluenceAction:
     def execute(self, performer, target, skill_to_use, dc_to_beat=15):
         """
         The performer makes a check to influence a target using a specific skill.
+        Now uses integrated social interaction mechanics.
         NOTE: Action economy is handled by ActionExecutionSystem, not here.
         """
         ability = 'wis' if skill_to_use.lower() == 'animal_handling' else 'cha'
@@ -20,7 +21,7 @@ class InfluenceAction:
             check_type=skill_to_use.lower(),
             dc=dc_to_beat,
             target=target,
-            is_influence_check=True # Explicitly flag this as an influence check
+            social_interaction_type=skill_to_use.lower()  # Use integrated social system
         )
         
         if was_successful:
