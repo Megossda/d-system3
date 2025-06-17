@@ -18,15 +18,36 @@ def perform_d20_test(
     is_saving_throw=False,
     attacker_is_within_5_feet=False,
     is_attack_roll=False,
-    is_influence_check=False
+    is_influence_check=False,
+    social_interaction_type=None,
+    override_social_dc=None
 ):
     """
-    Performs a generic D20 Test with full social attitude mechanics and proper saving throw support.
-    Now tracks critical hits for the attack system.
+    Performs a generic D20 Test with integrated social interaction mechanics.
+    
+    Args:
+        social_interaction_type: Type of social interaction ("persuasion", "intimidation", "deception", etc.)
+        override_social_dc: Manual DC override for social interactions
     """
     global _last_d20_result
     
-    # --- NEW: SOCIAL INTERACTION RULE ---
+    # --- SOCIAL INTERACTION INTEGRATION ---
+    # Handle social DC modifiers and attitude effects
+    if social_interaction_type and target:
+        # Apply attitude-based DC modifiers
+        if dc is not None and override_social_dc is None:
+            attitude_modifier = _get_attitude_modifier(target.attitude, social_interaction_type)
+            original_dc = dc
+            dc += attitude_modifier
+            print(f"  > Social DC: {original_dc} (base) {attitude_modifier:+d} (attitude) = {dc}")
+        elif override_social_dc is not None:
+            dc = override_social_dc
+            print(f"  > Using override social DC: {dc}")
+        
+        # Set influence check flag for compatibility
+        is_influence_check = True
+    
+    # --- EXISTING: SOCIAL INTERACTION RULE ---
     # Check the target's attitude if this is an influence check.
     if is_influence_check and target:
         if target.attitude == 'Friendly':
@@ -151,3 +172,27 @@ def get_last_d20_result():
     """Get the actual d20 result from the last roll."""
     global _last_d20_result
     return _last_d20_result
+
+def _get_attitude_modifier(target_attitude, interaction_type):
+    """
+    Get DC modifier based on target's attitude and interaction type.
+    
+    Args:
+        target_attitude: Target's attitude ("Friendly", "Indifferent", "Hostile")
+        interaction_type: Type of social interaction ("persuasion", "intimidation", "deception", etc.)
+        
+    Returns:
+        int: DC modifier to apply
+    """
+    # Base attitude modifiers from D&D 2024 rules
+    attitude_modifiers = {
+        'Friendly': -2,    # Easier to influence friendly NPCs
+        'Indifferent': 0,  # Standard DC
+        'Hostile': +2      # Harder to influence hostile NPCs
+    }
+    
+    # Special case: intimidation against hostile creatures is even harder
+    if interaction_type == "intimidation" and target_attitude == "Hostile":
+        return +4
+    
+    return attitude_modifiers.get(target_attitude, 0)

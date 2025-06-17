@@ -116,6 +116,11 @@ class CombatManager:
         
         if self.combat_state:
             self._print_combat_summary()
+            
+            # Clean up condition tracking for all participants
+            from systems.condition_system import cleanup_creature
+            for creature in self.combat_state.participants:
+                cleanup_creature(creature)
         
         self.initiative_tracker.end_combat()
         self.combat_state = None
@@ -126,6 +131,15 @@ class CombatManager:
         print(f"🎯 {creature.name}'s Turn (Round {self.initiative_tracker.round_number})")
         print(f"{'='*60}")
         
+        # Update enhanced condition system with current round
+        from systems.condition_system import set_combat_round, update_condition_durations
+        set_combat_round(self.initiative_tracker.round_number)
+        
+        # Process condition expirations and saves at start of turn
+        expired_count = update_condition_durations(rounds_passed=0)
+        if expired_count > 0:
+            print(f"  > {expired_count} condition(s) expired")
+        
         # Use the creature's existing start_turn method
         creature.start_turn()
         
@@ -134,6 +148,12 @@ class CombatManager:
     
     def _end_creature_turn(self, creature):
         """End a creature's turn."""
+        # Process end-of-turn saving throws for conditions
+        from systems.condition_system import process_end_of_turn_saves
+        saves_made = process_end_of_turn_saves(creature)
+        if saves_made > 0:
+            print(f"  > {creature.name} made {saves_made} successful saving throw(s)")
+        
         # Clean up any end-of-turn effects
         ActionEconomyManager.cleanup_dead_creatures()
         

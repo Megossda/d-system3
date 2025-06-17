@@ -153,8 +153,9 @@ class DamageResistanceSystem:
 
 # Update the base Creature class to use damage resistance system
 def enhanced_take_damage(creature, amount, damage_type="bludgeoning", attacker=None):
-    """Enhanced take_damage method that applies resistances."""
+    """Enhanced take_damage method that applies resistances and handles concentration."""
     from systems.damage_resistance_system import DamageResistanceSystem
+    from systems.concentration_system import ConcentrationSystem
     
     # Calculate final damage with resistances
     final_damage = DamageResistanceSystem.calculate_damage(creature, amount, damage_type, attacker)
@@ -167,10 +168,17 @@ def enhanced_take_damage(creature, amount, damage_type="bludgeoning", attacker=N
     else:
         print(f"  > {creature.name} takes {final_damage} {damage_type} damage, remaining HP: {creature.current_hp}/{creature.max_hp}")
     
+    # Handle concentration saves if creature took damage
+    if final_damage > 0:
+        ConcentrationSystem.handle_damage(creature, final_damage, attacker)
+    
     if creature.current_hp <= 0:
         creature.current_hp = 0
         creature.is_alive = False
         print(f"  > {creature.name} has been defeated!")
+        
+        # Break concentration when creature dies
+        ConcentrationSystem.break_concentration(creature, "Creature died")
         
         # Clean up action economy when creature dies
         from systems.action_economy import ActionEconomyManager

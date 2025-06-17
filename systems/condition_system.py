@@ -1,5 +1,25 @@
 # File: systems/condition_system.py
-"""Enhanced condition system with official D&D 2024 condition effects."""
+"""Enhanced condition system with duration tracking and D&D 2024 condition effects."""
+
+import time
+from typing import Dict, Optional, Any
+from enum import Enum
+import logging
+
+logger = logging.getLogger('ConditionSystem')
+
+class DurationType(Enum):
+    """Types of condition durations."""
+    ROUNDS = "rounds"
+    MINUTES = "minutes" 
+    HOURS = "hours"
+    SAVE_ENDS = "save_ends"
+    PERMANENT = "permanent"
+    UNTIL_DISPELLED = "until_dispelled"
+
+# Global condition tracking
+_creature_conditions = {}
+_current_combat_round = 0
 
 class ConditionEffects:
     """Official D&D 2024 condition effects and their mechanical impacts."""
@@ -51,39 +71,106 @@ class ConditionEffects:
         'description': "Incapacitated, prone, unaware, auto-fail saves, nearby hits are critical."
     }
 
-def add_condition(target, condition_name):
+def add_condition(target, condition_name, duration_type=None, duration_value=None, 
+                 save_dc=None, save_ability=None, source=None, source_name=None):
     """
-    Adds a condition to the target creature with proper D&D 2024 effects.
+    Adds a condition to the target creature with duration tracking and D&D 2024 effects.
+    
+    Args:
+        target: The creature to affect
+        condition_name: Name of the condition
+        duration_type: DurationType enum or None for permanent
+        duration_value: Duration amount (rounds, minutes, etc.)
+        save_dc: DC for save-to-end conditions
+        save_ability: Ability for saves ('con', 'wis', etc.)
+        source: The source object (spell, ability, etc.)
+        source_name: Human-readable source name
     """
     if not hasattr(target, 'conditions'):
         target.conditions = set()
     
     condition_name = condition_name.lower()
     
-    if condition_name not in target.conditions:
-        target.conditions.add(condition_name)
-        print(f"  > {target.name} now has the {condition_name.upper()} condition!")
-        
-        # Apply immediate effects
-        _apply_condition_effects(target, condition_name)
-    else:
-        print(f"  > {target.name} already has the {condition_name.upper()} condition.")
+    # Initialize enhanced tracking
+    if target not in _creature_conditions:
+        _creature_conditions[target] = {}
+    
+    # Set defaults based on condition type
+    condition_defaults = {
+        'stunned': {'duration_type': DurationType.SAVE_ENDS, 'save_ability': 'con'},
+        'poisoned': {'duration_type': DurationType.SAVE_ENDS, 'save_ability': 'con'},
+        'frightened': {'duration_type': DurationType.SAVE_ENDS, 'save_ability': 'wis'},
+        'charmed': {'duration_type': DurationType.SAVE_ENDS, 'save_ability': 'wis'},
+        'paralyzed': {'duration_type': DurationType.SAVE_ENDS, 'save_ability': 'con'},
+        'blinded': {'duration_type': DurationType.SAVE_ENDS, 'save_ability': 'con'},
+        'deafened': {'duration_type': DurationType.SAVE_ENDS, 'save_ability': 'con'},
+        'restrained': {'duration_type': DurationType.PERMANENT},
+        'grappled': {'duration_type': DurationType.PERMANENT},
+        'prone': {'duration_type': DurationType.PERMANENT},
+        'incapacitated': {'duration_type': DurationType.ROUNDS, 'duration_value': 1},
+        'unconscious': {'duration_type': DurationType.PERMANENT}
+    }
+    
+    defaults = condition_defaults.get(condition_name, {})
+    if duration_type is None:
+        duration_type = defaults.get('duration_type', DurationType.PERMANENT)
+    if duration_value is None:
+        duration_value = defaults.get('duration_value', 0)
+    if save_ability is None:
+        save_ability = defaults.get('save_ability')
+    if source_name is None:
+        source_name = getattr(source, 'name', 'Unknown')
+    
+    # Store enhanced condition data
+    _creature_conditions[target][condition_name] = {
+        'duration_type': duration_type,
+        'duration_value': duration_value,
+        'save_dc': save_dc,
+        'save_ability': save_ability,
+        'source': source,
+        'source_name': source_name,
+        'applied_time': time.time(),
+        'applied_round': _current_combat_round
+    }
+    
+    # Legacy compatibility
+    target.conditions.add(condition_name)
+    
+    # Print notification
+    duration_text = _get_duration_text(condition_name, target)
+    print(f"  > {target.name} gains {condition_name.upper()} condition ({duration_text})")
+    if source_name != "Unknown":
+        print(f"    Source: {source_name}")
+    
+    # Apply immediate effects
+    _apply_condition_effects(target, condition_name)
+    
+    # Handle concentration breaking conditions
+    from systems.concentration_system import ConcentrationSystem
+    ConcentrationSystem.handle_condition_change(target, condition_name, True)
 
-def remove_condition(target, condition_name):
+def remove_condition(target, condition_name, reason="Removed"):
     """
     Removes a condition from the target creature and cleans up effects.
     """
     if not hasattr(target, 'conditions'):
-        return
+        return False
     
     condition_name = condition_name.lower()
     
     if condition_name in target.conditions:
+        # Remove from enhanced tracking
+        if target in _creature_conditions and condition_name in _creature_conditions[target]:
+            del _creature_conditions[target][condition_name]
+        
+        # Remove from legacy tracking
         target.conditions.remove(condition_name)
-        print(f"  > {target.name} no longer has the {condition_name.upper()} condition.")
+        print(f"  > {target.name} no longer has {condition_name.upper()} condition ({reason})")
         
         # Remove effects
         _remove_condition_effects(target, condition_name)
+        return True
+    return False
 
 def has_condition(target, condition_name):
     """
@@ -289,3 +376,134 @@ def describe_condition_effects(creature):
             descriptions.append(f"{condition.title()}: Unknown condition")
     
     return f"{creature.name} conditions:\n" + "\n".join(f"  • {desc}" for desc in descriptions)
+
+# Enhanced condition system functions
+def process_end_of_turn_saves(creature):
+    """Process end-of-turn saving throws for save-to-end conditions."""
+    if creature not in _creature_conditions:
+        return 0
+    
+    conditions_to_remove = []
+    saves_made = 0
+    
+    for condition_name, condition_data in _creature_conditions[creature].items():
+        if (condition_data['duration_type'] == DurationType.SAVE_ENDS and 
+            condition_data['save_ability'] and condition_data['save_dc']):
+            
+            print(f"  > {creature.name} makes a {condition_data['save_ability'].upper()} save to end {condition_name.upper()} (DC {condition_data['save_dc']})")
+            
+            from systems.d20_system import perform_d20_test
+            success = perform_d20_test(
+                creature=creature,
+                ability_name=condition_data['save_ability'],
+                check_type=f"{condition_data['save_ability']}_save",
+                dc=condition_data['save_dc'],
+                is_saving_throw=True
+            )
+            
+            if success:
+                conditions_to_remove.append(condition_name)
+                saves_made += 1
+                print(f"  > {creature.name} successfully saves against {condition_name.upper()}!")
+            else:
+                print(f"  > {creature.name} fails the save against {condition_name.upper()}")
+    
+    # Remove conditions that were successfully saved against
+    for condition_name in conditions_to_remove:
+        remove_condition(creature, condition_name, "Successful save")
+    
+    return saves_made
+
+def update_condition_durations(rounds_passed=0):
+    """Update all condition durations and remove expired ones."""   
+    global _current_combat_round
+    if rounds_passed > 0:
+        _current_combat_round += rounds_passed
+    
+    current_time = time.time()
+    expired_conditions = []
+    
+    for creature, conditions in _creature_conditions.items():
+        for condition_name, condition_data in conditions.items():
+            if _is_condition_expired(condition_data, current_time, _current_combat_round):
+                expired_conditions.append((creature, condition_name))
+    
+    # Remove expired conditions
+    removed_count = 0
+    for creature, condition_name in expired_conditions:
+        remove_condition(creature, condition_name, "Duration expired")
+        removed_count += 1
+    
+    return removed_count
+
+def set_combat_round(round_number):
+    """Set the current combat round for duration tracking."""   
+    global _current_combat_round
+    _current_combat_round = round_number
+
+def get_combat_round():
+    """Get the current combat round."""   
+    return _current_combat_round
+
+def cleanup_creature(creature):
+    """Remove all condition tracking for a creature."""   
+    if creature in _creature_conditions:
+        del _creature_conditions[creature]
+
+def describe_conditions(creature):
+    """Get a description of all conditions with durations."""   
+    if creature not in _creature_conditions:
+        return "No conditions"
+    
+    descriptions = []
+    for condition_name, condition_data in _creature_conditions[creature].items():
+        duration = _get_duration_text(condition_name, creature)
+        source = f" (from {condition_data['source_name']})" if condition_data['source_name'] != "Unknown" else ""
+        descriptions.append(f"{condition_name.upper()}: {duration}{source}")
+    
+    return "; ".join(descriptions) if descriptions else "No conditions"
+
+def _get_duration_text(condition_name, creature):
+    """Get human-readable duration text for a condition."""   
+    if creature not in _creature_conditions or condition_name not in _creature_conditions[creature]:
+        return "Unknown duration"
+    
+    condition_data = _creature_conditions[creature][condition_name]
+    duration_type = condition_data['duration_type']
+    duration_value = condition_data['duration_value']
+    
+    if duration_type == DurationType.PERMANENT:
+        return "Permanent"
+    elif duration_type == DurationType.UNTIL_DISPELLED:
+        return "Until dispelled"
+    elif duration_type == DurationType.SAVE_ENDS:
+        return "Until save succeeds"
+    elif duration_type == DurationType.ROUNDS:
+        remaining = max(0, condition_data['applied_round'] + duration_value - _current_combat_round)
+        return f"{remaining} rounds"
+    elif duration_type == DurationType.MINUTES:
+        remaining = max(0, (condition_data['applied_time'] + duration_value * 60) - time.time())
+        return f"{remaining/60:.1f} minutes"
+    elif duration_type == DurationType.HOURS:
+        remaining = max(0, (condition_data['applied_time'] + duration_value * 3600) - time.time())
+        return f"{remaining/3600:.1f} hours"
+    
+    return "Unknown"
+
+def _is_condition_expired(condition_data, current_time, current_round):
+    """Check if a condition has expired."""   
+    duration_type = condition_data['duration_type']
+    duration_value = condition_data['duration_value']
+    
+    if duration_type == DurationType.PERMANENT or duration_type == DurationType.UNTIL_DISPELLED:
+        return False
+    elif duration_type == DurationType.SAVE_ENDS:
+        return False  # Only expires on successful save
+    elif duration_type == DurationType.ROUNDS:
+        return current_round >= (condition_data['applied_round'] + duration_value)
+    elif duration_type == DurationType.MINUTES:
+        return current_time >= (condition_data['applied_time'] + duration_value * 60)
+    elif duration_type == DurationType.HOURS:
+        return current_time >= (condition_data['applied_time'] + duration_value * 3600)
+    
+    return False

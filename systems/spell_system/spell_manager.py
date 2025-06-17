@@ -3,6 +3,8 @@
 
 from core.utils import roll_d20, get_ability_modifier
 from systems.d20_system import perform_d20_test
+from systems.cover_system import RangeSystem, CoverSystem
+from systems.positioning_system import battlefield
 import logging
 
 # Set up logging
@@ -49,7 +51,42 @@ class SpellManager:
                     print(f"  > {caster.name} doesn't have a level {spell_level} spell slot!")
                     return False
 
+            # Range validation for targeted spells
+            if targets and SpellManager._requires_range_check(spell):
+                spell_range = SpellManager._parse_spell_range(spell.range_type)
+                
+                # Check each target individually
+                for target in (targets if isinstance(targets, list) else [targets]):
+                    if target == caster:  # Self-targeting is always valid
+                        continue
+                        
+                    range_check = RangeSystem.check_range(caster, target, spell_range)
+                    if not range_check['in_range']:
+                        print(f"  > {target.name} is out of range! (Distance: {range_check['distance']} feet, Spell range: {spell.range_type})")
+                        return False
+                    
+                    # Check for total cover (other cover types are handled in attack rolls)
+                    if hasattr(spell, 'school') and spell.school in ['evocation', 'conjuration']:  # Spells that can be blocked by total cover
+                        cover_info = CoverSystem.determine_cover(caster, target)
+                        if not cover_info['can_target']:
+                            print(f"  > {target.name} has total cover and cannot be targeted!")
+                            return False
+
             print(f"{action_type}: {caster.name} casts {spell.name}!")
+            
+            # Handle concentration spells
+            if hasattr(spell, 'concentration') and spell.concentration:
+                from systems.concentration_system import ConcentrationSystem
+                duration = getattr(spell, 'duration', '1 minute')
+                duration_seconds = ConcentrationSystem.parse_duration(duration)
+                
+                # Start concentration
+                if not ConcentrationSystem.start_concentration(
+                    caster, spell.name, duration_seconds, spell_level, 
+                    {'spell': spell, 'targets': targets}
+                ):
+                    print(f"  > {caster.name} could not maintain concentration on {spell.name}")
+                    return False
             
             # Cast the spell with error handling
             return spell.cast(caster, targets, spell_level, action_type)
@@ -191,3 +228,49 @@ class SpellManager:
         except Exception as e:
             logger.error(f"Error dealing spell damage: {e}")
             print(f"  > ERROR: Could not apply spell damage - {str(e)}")
+    
+    @staticmethod
+    def _requires_range_check(spell):
+        """Determine if a spell requires range checking."""
+        if not hasattr(spell, 'range_type'):
+            return False
+        
+        range_lower = spell.range_type.lower()
+        
+        # Self-targeting spells don't need range checks
+        if 'self' in range_lower:
+            return False
+        
+        # All other spells with ranges need checking
+        return True
+    
+    @staticmethod
+    def _parse_spell_range(range_string):
+        """Parse a spell's range string into a usable range value."""
+        if not range_string:
+            return 5  # Default to touch
+        
+        range_lower = range_string.lower()
+        
+        # Handle special cases
+        if 'touch' in range_lower:
+            return 5  # Touch spells require 5-foot reach
+        elif 'self' in range_lower:
+            return 0  # Self-targeting
+        elif 'sight' in range_lower:
+            return 1000  # Very long range for practical purposes
+        elif 'unlimited' in range_lower:
+            return float('inf')
+        
+        # Extract number from range string (first number found)
+        import re
+        numbers = re.findall(r'\d+', range_string)
+        if numbers:
+            base_range = int(numbers[0])
+            # Handle unit conversions
+            if 'mile' in range_lower:
+                return base_range * 5280  # Convert miles to feet
+            return base_range
+        
+        # Default fallback
+        return 30

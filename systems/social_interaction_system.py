@@ -45,9 +45,20 @@ class SocialInteractionSystem:
     @staticmethod
     def get_social_dc(base_dc, target_attitude, interaction_type="persuasion"):
         """
-        Calculate the DC for social interactions based on NPC attitude.
+        DEPRECATED: Calculate the DC for social interactions based on NPC attitude.
+        
+        This method is deprecated. Use perform_d20_test() with social_interaction_type 
+        parameter for integrated social DC handling.
+        
         D&D 2024 rules: Friendly NPCs are easier to influence, Hostile ones are harder.
         """
+        import warnings
+        warnings.warn(
+            "get_social_dc() is deprecated. Use perform_d20_test() with social_interaction_type parameter instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        
         attitude_modifiers = {
             'Friendly': -2,    # Easier to influence friendly NPCs
             'Indifferent': 0,  # Standard DC
